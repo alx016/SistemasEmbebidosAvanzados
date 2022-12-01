@@ -1,129 +1,90 @@
-const int ENC_A = 6;
-const int ENC_A2 = 5;
-char op = '0';
-char vel [] = {' ' , ' ', ' '};
-const int IN1 = 2; //motor 2 
-const int IN2 = 3;
-const int ENA = 4;
+#include <TimerOne.h>
+#include <ServoTimer2.h>
 
-int v = 300;
+ServoTimer2 servo; //Crear el objeto servo
+
+const int pot_sp = 140; 
+const int Pin_En2 = 4; 
+const int interruptPin2 = 2;
+const int Pin_En = 6; 
+
+long unsigned int counter=0; 
+double VelocidadEnRPM =0.0; 
+float tiempo=0.0; 
+float T=0.02; 
+float sp =0;
+
+float referencia= 0.0; 
+float Kp=0.03; //0.03; 
+float Ti=0.05; //0.05; 
+float Td=0.2; //0.0; //Termino derivativo 
+
+float K0=Kp+(Kp*T/Ti)+(Kp*Td/T);
+float K1=-Kp-2*Kp*Td/T; 
+float K2= Kp*Td/T; 
+//Inicializar el error y el control 
+
+float e=0, e1=0, e2=0; 
 
 
-
-
-
-
+float u=0, u1=0, u3=0;
 void setup() {
-  Serial.begin (9600);
-  pinMode (ENC_A, INPUT);
-  pinMode (ENC_A2, INPUT);
-  pinMode (IN1, OUTPUT);
-  pinMode (IN2, OUTPUT);
-  pinMode (ENA, OUTPUT);
-  MENU();
-
+  pinMode(Pin_En2,OUTPUT);
+  pinMode(Pin_En,OUTPUT);
+  pinMode(interruptPin2, INPUT);
+  attachInterrupt(digitalPinToInterrupt(interruptPin2), counting, RISING);
+  //Timer 1: Se activa cada 20,000 microsegundos =0.02segundos
+  servo.attach(8);
+  Timer1.initialize(20000);
+  Timer1.attachInterrupt(ISR_RevolucionesPorMinuto);
+  Serial.begin(9600);
 
 }
 
 void loop() {
-  encoder();
-  delay(3000);
-
-}
-
-void serialEvent () {
-
-  delay(20);
-  op = Serial.read();
-  while (Serial.available() > 0){Serial.read();}
-  switch (op) {
-    case '1':
-      //prende el motor 2 
-      digitalWrite(IN1, HIGH);
-      digitalWrite(IN2, LOW);
-      analogWrite (ENA, v);
-      Serial.println();
-      Serial.print(F("ESTADO: "));
-      Serial.println(F("----------GIRO HORARIO-------"));
-    break;
-    //caso de apagado ambos moteres 
-    case '2': 
-      digitalWrite(IN1, LOW);
-      digitalWrite(IN2, LOW);
-      analogWrite (ENA, 0);
-      Serial.println();
-      Serial.print(F("ESTADO: "));
-      Serial.println(F("----------APAGADO-------"));
-      encoder();
-    break;
-    //prende el motor 1 
-    case '3': 
-      digitalWrite(IN1, LOW);
-      digitalWrite(IN2, HIGH);
-      analogWrite (ENA, v);
-      Serial.println();
-      Serial.print(F("ESTADO: "));
-      Serial.println(F("----------GIRO ANTIHORARIO-------"));
-    break;
-
-    //prenden los dos motores
-    case '4' : 
-      digitalWrite(IN1, HIGH);
-      digitalWrite(IN2, HIGH);
-      analogWrite (ENA, v);
-      Serial.println();
-      Serial.print(F("ESTADO: "));
-      Serial.println(F("----------GIRO ANTIHORARIO-------"));
-    break;
-      
-    
-
-
-    
-
-    case '5': 
-      v=0; 
-      Serial.println(); 
-      Serial.println(F("Cambio de velocidad")); 
-      Serial.println(F("Inrese la velocida en rad/s: ")); 
-      while (Serial.available()==0){;}
-      Serial.readBytesUntil('\n',vel,3); 
-      delay(100); 
-      while (Serial.available()==0){Serial.read();}
-      v=atoi(vel);
-      Serial.print(F("Se cambio la velocidad a: ")); 
-      Serial.println (v); 
-    break; 
-
-    
-      
-
-    }
-
-  MENU(); 
-
-}
-
-
-
-void encoder(){
-  int a = digitalRead(ENC_A); 
-  int b = digitalRead(ENC_A2); 
-  Serial.print(a*5); 
-  Serial.print (""); 
-  Serial.print(b*5); 
-  
-  
-  
+  // put your main code here, to run repeatedly:
+  sp = pot_sp;
+  Serial.print("sp: ");
+  Serial.print(referencia); 
+  Serial.print(" PWM Salida: "); 
+  Serial.print(u);
+  Serial.print(" PWM Salida: "); 
+  Serial.print(u3);
+  Serial.print(" ");  
+  Serial.print(e);
+  Serial.print(" RPM: "); 
+  Serial.println(VelocidadEnRPM/2); 
+  int i = 1000; 
+  for( i = 1000; i < 2250; i++) { servo.write(i); delay(1); } //delay(1000); //Volver hacia atras for(int i = 2250; i > 750; i--)
+  {
+    servo.write(i);
   }
-void MENU(){
-  
-  Serial.println(); 
-  Serial.println(F("          MENU"));
-  Serial.println(F("Presione una opcion 1-4"));
-  Serial.println(F("1.Giro izquierda "));
-  Serial.println(F("2.Apagado "));  
-  Serial.println(F("3.Giro derecha")); 
-  Serial.println(F("4.Giro ambos"));
-  Serial.println(F("5.Cambiar velocidad"));
 }
+ 
+void counting (){
+  //contador 
+  counter++; 
+}
+
+void ISR_RevolucionesPorMinuto(){
+  //Calculo de las RPM
+    VelocidadEnRPM = 25*counter/(334*T);
+  tiempo = tiempo + 0.02;
+  referencia = sp;
+  e = referencia - VelocidadEnRPM;//El calculo del error es la referencia menos la salida
+  u = u1 + K0*e + K1*e1 + K2*e2;//La ley de control no puede ser negativa, en este caso es PWM //modelo de control 
+  //Saturacion de la ley de control
+  if(u<140){
+    u=140;
+    }
+   else if (u<10){
+     u=30;
+     }
+   u3 = u;
+   analogWrite(Pin_En,u);
+   analogWrite(Pin_En2, u3);
+   u1=u;
+   e2=e1;
+   e1=e;
+   counter = 0;
+  }
